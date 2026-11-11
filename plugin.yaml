@@ -1,0 +1,125 @@
+name: triage
+version: "0.1.2"
+description: >
+  Cut the Discovery → system-prompt skills index. Skills live in this plugin's
+  store. A runtime judge shortlists probability-tagged choices, and Hermes
+  sees a skill body only after a user tap or an auto-accept above threshold.
+license: MIT
+tags:
+  - skills
+  - hackathon
+requires_hermes: ">=0.23.0"
+provides_tools:
+  - skill_search
+  - skill_load
+provides_hooks:
+  - pre_llm_call
+  - pre_tool_call
+  - transform_tool_result
+  - post_compaction
+provides_middleware:
+  - llm_request
+  - tool_execution
+config_schema:
+  auto_accept_threshold:
+    type: float
+    default: 0.90
+    minimum: 0
+    maximum: 1
+    label: Auto-attach threshold
+    description: >
+      A skill the draft supports at this probability or higher is attached to
+      the prompt for you (and removed again if the draft stops supporting it).
+      0 turns auto-attach off.
+  shortlist_size:
+    type: int
+    default: 5
+    minimum: 1
+    maximum: 8
+    label: Suggestions
+    description: How many skill chips to show above the prompt.
+  max_attached:
+    type: int
+    default: 0
+    minimum: 0
+    label: Skills per message
+    description: >
+      Cap on skills held for one message. 0 = no limit. Bodies that do not fit
+      the context budget are not dropped; the model is told to load them with
+      skill_view.
+  strip_skills_index:
+    type: bool
+    default: true
+    label: Strip skills index
+    description: >
+      Remove leftover <available_skills> / ## Skills index blocks from outbound
+      system messages. Rewriting the system prompt breaks the provider prefix
+      cache on the turn the bytes change.
+  interactive:
+    type: bool
+    default: true
+    label: Interactive picker
+    description: >
+      Ask the host for a choice dialog (ask_choice) when it supports one.
+      Hermes v0.22 returns None from hooks, so turns without chips fall back
+      to a probability shortlist in the user message.
+  skill_folders:
+    type: str
+    default: ""
+    label: Skill folders
+    description: >
+      Folders of SKILL.md trees to keep in the catalog, separated by ";" (or
+      one per line in config.yaml). Imported on gateway start and kept in
+      sync while Hermes runs. Example: D:/skills/my-skills
+  model_tools:
+    type: bool
+    default: true
+    label: Model can search skills
+    description: >
+      Give the model two tools, skill_search and skill_load, so it can find
+      and load skills itself (for example when you say "use triage to find
+      Android skills"). Costs about 200 tokens of tool schema; nothing else
+      until the model calls them.
+  hide_hermes_skills:
+    type: bool
+    default: true
+    label: Hide Hermes' own skills
+    description: >
+      Skills in Hermes' own folders that Triage indexes are added to Hermes'
+      skills.disabled, so Hermes stops listing them and Triage finds and loads
+      them instead (hermes-agent and your always-load skills stay visible).
+      New ones (marketplace installs, skills the model creates) are hidden as
+      soon as Triage has them. Turn this off, or run `hermes triage restore`,
+      to give them back; do that before uninstalling Triage.
+  register_slash:
+    type: bool
+    default: false
+    label: List skills in Hermes' / menu
+    description: >
+      Off (default): Hermes does not discover catalog skills; you find them with
+      Triage's chips and /term search, and Triage loads them. On: every catalog
+      skill is also registered as /triage:<name> in Hermes' own / menu (its
+      skills index is stripped from requests). To also hide Hermes' own folder
+      skills, list them under skills.disabled in Hermes' config.
+  always_load:
+    type: str
+    default: ""
+    label: Always load
+    description: >
+      Comma-separated skill names loaded on every session's first prompt (and
+      again after a compaction), in every project. Add per-project names with
+      always_load in .hermes/triage.yaml at the project root.
+  debug:
+    type: bool
+    default: false
+    label: Diagnostics
+    description: >
+      Write [triage-diag] stage lines (register, mount, rank, turn finished)
+      to Hermes' desktop.log. For local testing; leave off otherwise.
+  embedder:
+    type: str
+    default: ""
+    label: Embedder
+    description: >
+      Optional dotted path (package.module.Class) with score(query, skill) ->
+      float in [0, 1]. Empty uses the keyword/FTS judge only.

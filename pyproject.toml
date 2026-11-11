@@ -1,0 +1,10 @@
+[project]
+name = "triage"
+version = "0.1.2"
+description = "Hermes plugin that cuts the system-prompt skills index and loads one skill after a probability-tagged shortlist."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

@@ -1,0 +1,10 @@
+{"draft": "use git-commit for this", "expect": ["git-commit"], "kind": "named"}
+{"draft": "write a commit message for the staged changes", "expect": ["git-commit"], "kind": "described"}
+{"draft": "review this pull request diff for bugs", "expect": ["pr-review"], "kind": "described"}
+{"draft": "what is the weather forecast for Lisbon tomorrow", "expect": ["weather-brief"], "kind": "described"}
+{"draft": "will it rain in Krakow this weekend", "expect": ["weather-brief"], "kind": "paraphrase"}
+{"draft": "check my colleague's changes before they are merged", "expect": ["pr-review"], "kind": "paraphrase"}
+{"draft": "save my work with a good description", "expect": ["git-commit"], "kind": "paraphrase"}
+{"draft": "hello, how are you today", "expect": [], "kind": "none"}
+{"draft": "rename the variable in main.py", "expect": [], "kind": "none"}
+{"draft": "translate this paragraph to Polish", "expect": [], "kind": "none"}

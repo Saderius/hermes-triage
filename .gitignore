@@ -1,0 +1,29 @@
+__pycache__/
+agent-tools/
+uploads/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.db
+*.db-wal
+*.db-shm
+.venv/
+.netlify/
+*.bak-skill-judge-*
+*.bak-triage-*
+
+# Hermes stamps this beside a managed desktop-half copy; never commit it
+desktop/.hermes-package.json
+
+# Local work notes: kept on disk, never published
+docs/packets/
+*_agy.log
+/CASE.md
+/CURSOR-RUN.md
+/HERMES-ISSUE-*.md
+/UI-IMPLEMENTATION-CASE.md
+/cat-pelican-bike.svg
+/mockup-hermes-ui.html
+.claude/
+/docs/why-nothing-showed.md
