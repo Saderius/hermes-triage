@@ -42,6 +42,8 @@ One side effect to plan for: a `/rank` call with a `session_id` marks that chat 
 
 Each scenario is one new chat unless it says otherwise. Record pass or fail for every box.
 
+Where to run them: scenario H is for the command line. Run every other scenario in a Hermes Desktop chat (type the prompt in the composer, with the chips showing). On the command line Triage behaves as scenario H describes: it puts its own choice list into the turn and the model asks you to pick, and a prompt that names a skill loads it at once, so B and C cannot be judged there. `/compress` (scenarios I and J) runs only in Hermes Desktop.
+
 ### A. The skills index is cut
 
 1. Send: `List every skill you can see in your system prompt. If you see none, say "none".`

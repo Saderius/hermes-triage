@@ -41,8 +41,9 @@ def evaluate_skill_view(
     return {
         "action": "block",
         "message": (
-            f"triage: skill_view({shown!r}) is not approved for this session. "
-            "Pick a probability-tagged skill with /triage, reply with its name "
-            "or number, or raise auto_accept_threshold. Unapproved loads stay closed."
+            f"triage: skill_view({shown!r}) is not approved for this chat. "
+            "Load the skill first with skill_load (or the user picks it from the "
+            "choices Triage showed); after that skill_view works for it. "
+            "Unapproved loads stay closed."
         ),
     }

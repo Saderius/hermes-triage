@@ -22,6 +22,9 @@ class GuardTests(unittest.TestCase):
         )
         self.assertEqual(blocked["action"], "block")
         self.assertIn("git-commit", blocked["message"])
+        # The refusal points at what works; /triage commands do not run in Hermes.
+        self.assertIn("skill_load", blocked["message"])
+        self.assertNotIn("/triage", blocked["message"])
 
         missing = evaluate_skill_view("skill_view", {}, is_approved=lambda _name: True)
         self.assertEqual(missing["action"], "block")
