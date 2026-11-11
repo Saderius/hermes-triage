@@ -1104,7 +1104,9 @@ def render_shortlist(ranking: Ranking, unlocked: list[str] | None = None) -> str
         lines = [
             "[triage] The system-prompt skills index is withheld. "
             "Nothing below is loaded yet.",
-            "Show these probability-tagged choices to the user and wait for a name, a number, or 'skip'.",
+            "These skills may fit this message. Answer the message normally. If one clearly fits, "
+            "add one short line naming it (the user can reply with its number or name to load it); "
+            "otherwise ignore this list.",
             "Do not call skill_view until one of them is approved.",
             f"No-skill probability: {_pct(ranking.none_probability)}.",
         ]
