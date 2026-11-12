@@ -1,5 +1,5 @@
 name: triage
-version: "0.1.2"
+version: "0.1.3"
 description: >
   Cut the Discovery → system-prompt skills index. Skills live in this plugin's
   store. A runtime judge shortlists probability-tagged choices, and Hermes
