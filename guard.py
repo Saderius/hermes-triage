@@ -7,11 +7,20 @@ from typing import Any, Callable
 SKILL_VIEW_TOOL = "skill_view"
 
 
-def normalize_skill_name(name: str) -> str:
+def bare_skill_name(name: str) -> str:
+    """``plugin:name``, ``category/name`` and ``category\\name`` all mean ``name``.
+
+    Models address Hermes' own skills by their folder path; the catalog knows
+    them by the folder's name."""
     text = (name or "").strip()
-    if ":" in text:
-        text = text.split(":")[-1]
-    return text.casefold()
+    for sep in (":", "/", "\\"):
+        if sep in text:
+            text = text.split(sep)[-1]
+    return text.strip()
+
+
+def normalize_skill_name(name: str) -> str:
+    return bare_skill_name(name).casefold()
 
 
 def skill_name_from_args(args: Any) -> str:

@@ -103,7 +103,7 @@ A skill that attached itself leaves again when the draft stops supporting it. Sk
 python -m unittest discover -s tests
 ```
 
-141 tests, standard library only. For testers:
+142 tests, standard library only. For testers:
 
 - [`docs/testing/feature-checklist.md`](docs/testing/feature-checklist.md): one check for every feature, on screen and off.
 - [`docs/testing/conversation-tests.md`](docs/testing/conversation-tests.md): scenarios with a real model in a real conversation.

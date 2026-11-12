@@ -119,6 +119,7 @@ def skill_search(args: dict, **kwargs) -> str:
 
 def skill_load(args: dict, **kwargs) -> str:
     from .catalog_io import skill_markdown
+    from .guard import bare_skill_name
     from .service import current_runtime, scope_key
 
     runtime = current_runtime()
@@ -135,7 +136,7 @@ def skill_load(args: dict, **kwargs) -> str:
     loaded, skipped, unknown, deferred = [], [], [], []
     used = 0
     for name in names:
-        skill = runtime.store.get(name)
+        skill = runtime.store.get(name) or runtime.store.get(bare_skill_name(name))
         if skill is None:
             unknown.append(name)
             continue

@@ -11,7 +11,7 @@ from .catalog_io import HOOK_CONTEXT_SAFE_CHARS, activation_text
 from .catalog_link import invoked_skills, leading_tokens, parse_folders
 from .context import project_context, strip_injected
 from .preload import merge_names, parse_names, project_names
-from .guard import evaluate_skill_view, normalize_skill_name, skill_name_from_args
+from .guard import bare_skill_name, evaluate_skill_view, normalize_skill_name, skill_name_from_args
 from .judge import Ranking, SkillJudge, load_embedder
 from .store import Skill, SkillStore
 
@@ -635,7 +635,7 @@ class Runtime:
         name = skill_name_from_args(parsed)
         if not name or not self.skill_is_approved(name, turn_id=turn_id, session_id=session_id):
             return None
-        skill = self.store.get(name) or self.store.get(name.split(":")[-1].strip())
+        skill = self.store.get(name) or self.store.get(bare_skill_name(name))
         if skill is None:
             return None
         file_path = parsed.get("file_path")
