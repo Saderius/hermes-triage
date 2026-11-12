@@ -151,6 +151,8 @@ function SkillJudgeLive({ ctx, sessionId, storedId, isNew }) {
   const suppressRef = useRef(false)
   const settleRef = useRef(0)
   const dockRef = useRef(null)
+  const chipListRef = useRef(null)
+  const [chipsHiddenFrom, setChipsHiddenFrom] = useState(Infinity)
   const commitRef = useRef(null)
   // Attach state lives in refs so the poll loop and rank callbacks see it live.
   const heldRef = useRef([]) // [{ name, auto }], mirrors `held`
@@ -758,6 +760,20 @@ function SkillJudgeLive({ ctx, sessionId, storedId, isNew }) {
     return () => observer.disconnect()
   }, [])
 
+  // Chips that wrapped out of the one visible line are out of reach: no Tab stop,
+  // hidden from screen readers. Measured after every render; offsets only, no
+  // layout change, so it settles in one pass.
+  useLayoutEffect(() => {
+    const list = chipListRef.current
+    let from = Infinity
+    if (list) {
+      for (let index = 0; index < list.children.length; index += 1) {
+        if (list.children[index].offsetTop > 12) { from = index; break }
+      }
+    }
+    if (from !== chipsHiddenFrom) setChipsHiddenFrom(from)
+  })
+
   // Keep the highlighted row inside the scrolling list.
   const menuAt = menu ? menu.at : -1
   useLayoutEffect(() => {
@@ -881,9 +897,11 @@ function SkillJudgeLive({ ctx, sessionId, storedId, isNew }) {
                       // The shelf keeps its slot even when empty, so chips never shift.
                       jsx(Magazine, { items: held, flying, width: magazineWidth(barWidth), locked, onDetach: (key) => detach(key, true) }),
                       searchMenu,
-                      jsx('div', { className: 'hsj-chip-list', children: shownSuggestions.map((candidate) => jsxs('button', {
+                      jsx('div', { className: 'hsj-chip-list', ref: chipListRef, children: shownSuggestions.map((candidate, index) => jsxs('button', {
                         type: 'button',
                         disabled: locked,
+                        tabIndex: index >= chipsHiddenFrom ? -1 : undefined,
+                        'aria-hidden': index >= chipsHiddenFrom ? 'true' : undefined,
                         className: candidate.source === 'conversation' ? 'hsj-suggest-chip hsj-from-convo'
                           : (candidate.source === 'search' ? 'hsj-suggest-chip hsj-search-hit' : 'hsj-suggest-chip'),
                         'data-name': candidate.name,
@@ -1153,8 +1171,10 @@ function ensureStyles() {
 .hsj-suggest { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
 .hsj-hint, .hsj-status { font-size: 0.6875rem; color: var(--ui-text-tertiary); }
 .hsj-chips { display: flex; flex-wrap: nowrap; gap: 6px; align-items: center; width: 100%; min-width: 0; }
-.hsj-chip-list { display: flex; flex-wrap: nowrap; gap: 6px; align-items: center; flex: 1 1 auto; min-width: 0; overflow: hidden; padding: 2px 0; }
-.hsj-suggest-chip { flex: 0 1 auto; min-width: 64px; max-width: 260px; white-space: nowrap; display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--ui-stroke-secondary); border-radius: 3px; background: var(--hsj-surface); color: var(--ui-text-secondary); font: inherit; font-size: 0.75rem; line-height: 1.3; padding: 2px 8px; cursor: pointer; }
+/* One line of whole chips: a chip that does not fit wraps to a second line,
+   which the fixed height hides, instead of every chip shrinking to "5% d…". */
+.hsj-chip-list { position: relative; display: flex; flex-wrap: wrap; align-content: flex-start; column-gap: 6px; row-gap: 12px; align-items: center; flex: 1 1 auto; min-width: 0; box-sizing: border-box; height: 26px; overflow: hidden; padding: 2px 0; }
+.hsj-suggest-chip { flex: 0 0 auto; min-width: 64px; max-width: min(260px, 100%); white-space: nowrap; display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--ui-stroke-secondary); border-radius: 3px; background: var(--hsj-surface); color: var(--ui-text-secondary); font: inherit; font-size: 0.75rem; line-height: 1.3; padding: 2px 8px; cursor: pointer; }
 .hsj-suggest-chip { border-color: var(--identity, var(--ui-stroke-secondary)); background: color-mix(in srgb, var(--identity, var(--ui-stroke-secondary)) 12%, var(--hsj-surface)); }
 .hsj-suggest-chip strong { font-weight: 600; }
 .hsj-suggest-chip.hsj-from-convo { border-style: dashed; }
