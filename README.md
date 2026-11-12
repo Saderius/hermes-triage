@@ -8,8 +8,8 @@ Plugin only: Triage does not patch Hermes. How everything behaves, with diagrams
 
 ## What you see in Hermes Desktop
 
-- **Chips above the prompt.** As you type, Triage ranks the catalog and suggests skills, each with a score. No model is involved; ranking 2,500 skills takes about 0.2 s.
-- **Click to hold, Enter to load.** A clicked chip becomes a pill on the left pile. Sending the message loads every held skill, and the pills fly to the fan on the right.
+- **Chips at the top of the prompt box.** As you type, Triage ranks the catalog and suggests skills, each with a score. No model is involved; ranking 2,500 skills takes about 0.2 s.
+- **Click to hold, Enter to load.** A clicked chip becomes a pill on the left pile; hover the pile to see every held skill. Sending the message loads every held skill, and the pills fly to the fan on the right.
 - **The fan shows what is loaded.** Skills loaded in this chat sit on the right, including ones the model or an older turn loaded. Hover a chip to read the skill's card.
 - **Chips follow the conversation.** With an empty prompt the row shows skills for what the chat is about, not only for what you type.
 - **Auto-attach only on evidence.** "do you have access to firebase here?" attaches `firebase` by itself. "let's go with the second option" does not attach `go`.
@@ -19,7 +19,7 @@ Plugin only: Triage does not patch Hermes. How everything behaves, with diagrams
 
 There are two ways, and both search every skill in the catalog.
 
-1. **Type `/` in the prompt.** Type `/` and a few letters at the end of your message, for example `/fire`. The chip row above the prompt turns into search results, marked `/` instead of a score. Click one to hold it; the `/fire` text leaves the prompt. Hermes' own `/` menu opens at the same time and stays on top where it overlaps the chips.
+1. **Type `/` in the prompt.** Type `/` and a few letters at the end of your message, for example `/fire`. The chip row in the prompt box turns into search results, marked `/` instead of a score. Click one to hold it; the `/fire` text leaves the prompt. Hermes' own `/` menu opens above the prompt at the same time.
 2. **Open the search box.** Click the magnifier left of the chips. A list opens with a search field. With the field empty it shows your **Favourites**, your **Most used** skills and **Suggested** ones. Star a row to make it a favourite. Typing searches all skills; click a row or press Enter to hold it.
 
 ## Long chats and compression

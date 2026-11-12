@@ -10,7 +10,7 @@ For a photographer (person or bot) making README, catalog and X images of Triage
 
 ## Setup
 
-- Hermes Desktop with Triage installed as the [README](../../README.md) says. Check: chips appear above the prompt while you type.
+- Hermes Desktop with Triage installed as the [README](../../README.md) says. Check: chips appear at the top of the prompt box while you type.
 - Catalog: the 3 demo skills (`examples/demo-skills`) plus at least 30 real skills, connected under **Settings → Plugins → triage → Skill folders**. More skills give livelier chips.
 - Window about 1440x900, sidebar visible, dark theme first. If the Acrylic plugin is also installed, use its Acrylic preset.
 - A model configured, and one chat with a few real turns before you start, for example: `Review my last commit message and suggest a better one`, then `Give me an example for a bug fix in a login form`.
@@ -23,9 +23,9 @@ PNG, full window. File name: `E<nn>-<theme>-<feature>.png`, for example `E01-dar
 
 | Shot | Feature | How to set it up |
 | --- | --- | --- |
-| E01 | Chips while typing | Type `review the commit message`. Chips with percentages above the prompt. |
+| E01 | Chips while typing | Type `review the commit message`. Chips with percentages at the top of the prompt box. |
 | E02 | Auto-attach | Type `use git-commit for this task`. The dashed pill on the left that you did not click. |
-| E03 | Held pile | Type `help me with my change`, click three chips. Hover the pile so it spreads, with its count badge. |
+| E03 | Held pile | Type `help me with my change`, click three chips. Hover the pile so its list of held skills opens. |
 | E04 | Loaded fan | Send E03's message, wait for the reply. The fan of loaded skills on the right. |
 | E05 | Skill card | Hover a chip on the fan. Its card with **Keep** and **View body**. |
 | E06 | Skill text | Click **View body** on that card. |
@@ -35,9 +35,9 @@ PNG, full window. File name: `E<nn>-<theme>-<feature>.png`, for example `E01-dar
 | E10 | Search list, empty | Clear the prompt, click the magnifier. Favourites, Most used, Suggested, with stars. |
 | E11 | Search list, typed | Type `pr` in the list's search field. Highlight a row with the arrow keys. |
 | E12 | Trash and lock | Hold two skills, click the trash button. Grey chips and the lock button. |
-| E13 | Above Hermes' rows | A chat where Hermes shows a goal or changed-files row above the prompt. The chip row sits above it. Skip if you cannot get one. |
+| E13 | With Hermes' rows | A chat where Hermes shows a goal or changed-files row above the prompt, with the chips in the prompt box. Skip if you cannot get one. |
 | E14 | Hermes' `/` menu wins | Type `/` alone. Hermes' menu open over the left part of the chip row. |
-| E15 | Scrolling | In a long chat, scroll up. Hermes' "N messages" button just above the chips. |
+| E15 | Scrolling | In a long chat, scroll up. Hermes' "N messages" button above the prompt box. |
 | E16 | After a compression | After `/compress`: the fan holds only what is still in context, the kept skill (E07) is back on the left pile. |
 | E17 | Command line | A terminal showing `python run.py peek review the commit message` and its output. |
 | E18 | Optional: context saved | Hermes' `/context` view in one chat with Triage on, then the same with Triage disabled (`hermes plugins disable triage`, restart). Skip if `/context` shows no skills figure. |

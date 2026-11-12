@@ -16,7 +16,7 @@ skills that must always be present go on the always-load list.
 
 | Place | Where you see it | How it gets there | How it leaves |
 | --- | --- | --- | --- |
-| **Suggested** | Chip row above the prompt (left) | The judge ranks it in the top N for the draft or the conversation | You attach it, or the ranking changes |
+| **Suggested** | Chip row at the top of the prompt box (left) | The judge ranks it in the top N for the draft or the conversation | You attach it, or the ranking changes |
 | **Held** | Blue ⚡ pills in the magazine, left of the chips. The prompt text is not changed | You click its chip, or auto-attach (≥ threshold). (A typed `/triage:name` token loads the same way but stays in the text) | You click the pill, or (auto-attached only) the draft stops supporting it |
 | **Loaded** | Fan on the right of the prompt | You send a prompt while it is held (it flies from the left pile onto the fan), or always-load | Never during the session. After compaction it is kept as a bridge (name + description) |
 
@@ -41,11 +41,10 @@ stateDiagram-v2
 ## Rules
 
 1. **Clicking a chip never sends.** It loads the skill into the *magazine*:
-   one fixed slot left of the chips. The newest pill sits in the slot and
-   every earlier one is pushed up behind it, condensing as the stack grows,
-   with a count badge. The chip row never changes width. Hover spreads the
-   stack upward; click a pill to take it out. The prompt text is never edited.
-   Load several, then press Enter once.
+   one fixed slot left of the chips. The newest pill sits in the slot, with a
+   count badge. The chip row never changes width. Hover opens a list of every
+   held skill (an SDK popover); click a pill to take it out. The prompt text is
+   never edited. Load several, then press Enter once.
 2. **No limit on held skills** (`max_attached`, default 0 = unlimited; set a
    number to cap it). Held skills are not prompt tokens, so Hermes' 5-token
    stacked limit does not apply. One limit is Hermes': a plugin may add about
@@ -89,9 +88,9 @@ stateDiagram-v2
    platforms without chips (Telegram, CLI) keep the server's own ranking.
 7. **Plugin only.** Triage never edits Hermes' files, settings or message
    rendering, and uses only plugin APIs (hooks, middleware, REST, the
-   composer area and its SDK calls). It does read the composer's DOM to place
-   its overlay and as a fallback for the draft text; a Hermes UI redesign can
-   move the overlay, but cannot break loading. The cost: Hermes'
+   `composer.top` slot, SDK popovers and `host.composer`). The bar is a row
+   at the top of the composer card; it reads none of Hermes' own markup
+   (catalog rule 8). The cost: Hermes'
    sent-message bubble shows no ⚡ chip for held skills; the right fan does.
 8. **The row never disappears on its own.** With an empty prompt it shows what
    the conversation is about (recent turns, the first prompt and its
@@ -99,8 +98,8 @@ stateDiagram-v2
    While you type, N − 2 chips come from the draft and 2 from the conversation.
 9. **Search all skills, and "none for this message".** A **magnifier button**
    stands between the magazine and the chips. It
-   opens a list above the chips at the left edge (downward when there is no
-   room above), drawn with Hermes' own popover; its search field carries the
+   opens a list above the chips (downward when there is no room above),
+   drawn with the plugin SDK's popover; its search field carries the
    same markers as Hermes' Ctrl+K palette, so a theme styles both alike. The
    list keeps one size. With an empty search field it shows at most 5 "Most
    used" and as many "Suggested" as the chip row shows. It
@@ -111,11 +110,7 @@ stateDiagram-v2
    **star**; clicking it makes the skill a favourite or removes it. A star
    only decides what the empty list shows: it does not attach a skill and
    does not change the ranking. The list opens only from the magnifier, never
-   by typing. Hermes' own floating things win over the bar: its `/` menu
-   covers the part of the bar it overlaps, and that menu never moves the bar.
-   The bar stands right above Hermes' composer dock and does not move while
-   you scroll; Hermes' "N messages" jump button is lifted by the bar's height
-   so it shows above the bar (only while the bar shows). A **trash button** left of
+   by typing. A **trash button** left of
    the magazine removes every held skill and locks the magazine for this
    message: chips are greyed, nothing can be held and nothing auto-attaches.
    The lock button, or sending the message, lifts it.
@@ -129,8 +124,8 @@ stateDiagram-v2
    what is in context now: a skill whose text was lost at a compaction leaves
    the fan, and it can be suggested, picked and attached again. Each chip on
    the fan is as wide as its name; names are cut only when the fan runs out
-   of room. The bar stands above everything Hermes stacks on the prompt
-   (goal, changed files, queued messages).
+   of room. Hovering a fan chip opens its card (an SDK popover) with
+   **Keep** and **View body**.
 12. **A chat keeps its skills when Hermes gives it a new id.** Hermes replaces
    a chat's session id when it continues an ended chat or compacts it. The
    magazine and the fan are looked up under every id of the same chat.

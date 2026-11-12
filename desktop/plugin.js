@@ -2,8 +2,10 @@
  * Hermes Desktop half of triage.
  * One file. Runtime plugins may only import @hermes/plugin-sdk and react.
  *
- * Above the prompt: the held pile and suggestion chips on the left, the
- * loaded-skill fan on the right. The auto-attach threshold is a plugin setting
+ * A row inside the composer card (Hermes' composer.top slot): the held pile and
+ * suggestion chips on the left, the loaded-skill fan on the right. Everything
+ * that floats (the search list, the skill card, the spread pile) is an SDK
+ * Popover. The bar reads nothing of Hermes' own markup. The auto-attach threshold is a plugin setting
  * (Settings -> Plugins -> triage), not composer chrome.
  * Clicking a suggestion holds it on the left pile (the prompt text is never
  * touched); Enter sends the prompt, the agent loads every held skill with it,
@@ -149,7 +151,6 @@ function SkillJudgeLive({ ctx, sessionId, storedId, isNew }) {
   const suppressRef = useRef(false)
   const settleRef = useRef(0)
   const dockRef = useRef(null)
-  const overlayRef = useRef(null)
   const commitRef = useRef(null)
   // Attach state lives in refs so the poll loop and rank callbacks see it live.
   const heldRef = useRef([]) // [{ name, auto }], mirrors `held`
@@ -199,14 +200,7 @@ function SkillJudgeLive({ ctx, sessionId, storedId, isNew }) {
 
     async function poll() {
       try {
-        let text = (await host.composer.getDraft(sessionId || null)) || ''
-        if (!text && dockRef.current) {
-          const root = dockRef.current.closest('[data-slot="composer-root"]') || dockRef.current.closest('form')
-          const editor = root ? root.querySelector('[contenteditable="true"], textarea, input') : null
-          if (editor) {
-            text = (editor.innerText || editor.value || '').trim()
-          }
-        }
+        const text = (await host.composer.getDraft(sessionId || null)) || ''
         if (dead) return
         const busyAtom = host.state && host.state.busy
         const busy = busyAtom && typeof busyAtom.get === 'function' ? Boolean(busyAtom.get()) : null
@@ -471,10 +465,11 @@ function SkillJudgeLive({ ctx, sessionId, storedId, isNew }) {
     setLocked(false)
     setMenu(null)
     if (!names.length) return
-    const overlay = overlayRef.current
-    const fan = overlay ? overlay.querySelector('.hsj-fan') : null
-    const target = fan ? fan.getBoundingClientRect().right : (overlay ? overlay.getBoundingClientRect().right : 0)
-    const mag = overlay ? overlay.querySelector('.hsj-mag') : null
+    // Measured on the bar's own elements only.
+    const root = dockRef.current
+    const fan = root ? root.querySelector('.hsj-fan') : null
+    const target = fan ? fan.getBoundingClientRect().right : (root ? root.getBoundingClientRect().right : 0)
+    const mag = root ? root.querySelector('.hsj-mag') : null
     const dx = mag ? Math.max(0, target - mag.getBoundingClientRect().right) : 0
     setFlying({ names, dx })
     sentTimerRef.current = setTimeout(() => {
@@ -554,21 +549,11 @@ function SkillJudgeLive({ ctx, sessionId, storedId, isNew }) {
   const detachRef = useRef(null)
   detachRef.current = detach
 
-  // Height from the top of the chip row to the bottom of the composer. The list's
-  // anchor spans both, so the list opens above the chips, or below the composer
-  // when there is no room above.
-  function menuSpan() {
-    const overlay = overlayRef.current
-    const card = composerCardFrom(dockRef.current)
-    if (!overlay || !card) return 1
-    return Math.max(1, Math.round(card.getBoundingClientRect().bottom - overlay.getBoundingClientRect().top))
-  }
-
   function toggleMenu() {
     if (menu) return setMenu(null)
     if (lockedRef.current) return undefined
     ctx.rest('/favorites').then(takeFavs).catch(() => {})
-    return setMenu({ id: Date.now(), query: searchRef.current || '', at: 0, span: menuSpan() })
+    return setMenu({ id: Date.now(), query: searchRef.current || '', at: 0 })
   }
 
   // A row of the list: hold the skill, or take it out again. The list stays open.
@@ -712,7 +697,8 @@ function SkillJudgeLive({ ctx, sessionId, storedId, isNew }) {
     }
     function onPointerDown(event) {
       const target = event.target
-      if (target && target.closest && target.closest('.hsj-fan')) return
+      // The card is a popover outside the fan; a press inside it is not "outside".
+      if (target && target.closest && target.closest('.hsj-fan, .hsj-detail-pop')) return
       dismiss()
     }
     document.addEventListener('keydown', onKey)
@@ -754,141 +740,23 @@ function SkillJudgeLive({ ctx, sessionId, storedId, isNew }) {
   // Why the row shows what it shows (debug setting only; one line per change).
   diag('row', { held: held.length, ranked: candidates.length, shown: shownSuggestions.length, busy })
 
-  // The overlay is React-owned but lives under <body> so no clipping or
-  // transformed ancestor in the composer (acrylic themes, overflow-hidden
-  // rows) can trap a position:fixed box. It is ALWAYS rendered (hidden when
-  // empty): React must never be asked to remove it from hsj-chrome while it
-  // sits under body, or removeChild throws and the contribution dies.
-  // Layout-effect cleanup runs before React detaches hsj-chrome, so the node
-  // goes back home first and leaves with it.
+  // The bar is a row in Hermes' composer.top slot, inside the composer card.
+  // Only its own width is measured: it sizes the pile slot and the fan.
   useLayoutEffect(() => {
-    const overlay = overlayRef.current
-    const dock = dockRef.current
-    if (!overlay || !document.body) return undefined
-    if (overlay.parentNode !== document.body) document.body.appendChild(overlay)
-    return () => {
-      if (overlay.parentNode !== document.body) return
-      if (dock && dock.isConnected) dock.insertBefore(overlay, dock.firstChild)
-      else overlay.remove()
-    }
-  }, [])
-
-  useLayoutEffect(() => {
-    const overlay = overlayRef.current
-    if (!overlay || !hasFan) return undefined
-    function onChipClick(event) {
-      const hit = event.target && event.target.closest ? event.target : null
-      if (hit && hit.closest('.hsj-trash')) return actionsRef.current.clearAll()
-      if (hit && hit.closest('.hsj-unlock')) return actionsRef.current.unlock()
-      if (hit && hit.closest('.hsj-more')) return actionsRef.current.toggleMenu()
-      const heldChip = event.target && event.target.closest ? event.target.closest('.hsj-held') : null
-      if (heldChip && overlay.contains(heldChip) && detachRef.current) {
-        detachRef.current(String(heldChip.getAttribute('data-name') || '').toLowerCase(), true)
-        return
-      }
-      const chip = event.target && event.target.closest ? event.target.closest('.hsj-suggest-chip') : null
-      if (!chip || !overlay.contains(chip) || !commitRef.current) return
-      const name = chip.getAttribute('data-name')
-      if (name) void commitRef.current(name)
-    }
-    overlay.addEventListener('click', onChipClick)
-    let frame = 0
-    const lifted = new Set()
-    function tick() {
-      const node = overlayRef.current
-      if (!node) return
-      // Hermes can keep several composers mounted (other chats, panes). Only a
-      // composer that is actually on screen shows its overlay; a hidden one's
-      // overlay hides instead of staying at its last position (a ghost copy).
-      const dock = dockRef.current
-      const box = dock && dock.isConnected && dock.getClientRects().length ? composerStackBox(dock) : null
-      const onScreen = Boolean(box && box.right - box.left > 40 && box.top > 0 && box.top < window.innerHeight)
-      node.style.visibility = onScreen ? '' : 'hidden'
-      if (!onScreen) {
-        dropJumpRise()
-        return
-      }
-      node.style.right = `${Math.max(8, window.innerWidth - box.right)}px`
-      const width = Math.round(Math.max(280, box.right - box.left))
-      node.style.width = `${width}px`
-      if (width !== barWidthRef.current) {
+    const root = dockRef.current
+    if (!root || typeof ResizeObserver !== 'function') return undefined
+    function measure() {
+      const width = Math.round(root.getBoundingClientRect().width)
+      if (width && width !== barWidthRef.current) {
         barWidthRef.current = width
         setBarWidth(width)
       }
-      node.style.bottom = `${Math.max(8, window.innerHeight - box.top + 8)}px`
-      // Hermes' "/" and "@" menu opens over the same spot. The overlay lives
-      // under <body>, so it paints above the whole chat pane, menu included.
-      // Cut out the part the menu covers: the menu reads as on top and takes
-      // the clicks. The huge negative insets keep the card and the list, which
-      // stand outside the overlay's own box, unclipped.
-      const mine = node.getBoundingClientRect()
-      let cut = 0
-      const drawers = document.querySelectorAll(HOST_DRAWER)
-      for (let index = 0; index < drawers.length; index += 1) {
-        const rect = drawers[index].getBoundingClientRect()
-        if (rect.width < 1 || rect.height < 1) continue
-        if (rect.right <= mine.left || rect.left >= mine.right || rect.bottom <= mine.top || rect.top >= mine.bottom) continue
-        cut = Math.max(cut, Math.round(rect.right - mine.left + 4))
-      }
-      node.style.clipPath = cut > 0 ? `inset(-200vh -200vw -200vh ${cut}px)` : ''
-      // Hermes' "N messages" jump pill floats where the bar stands; lift it by
-      // the bar's height so it shows above the bar and neither one moves. The
-      // composer is not inside the pill's pane, so the pill is found by place:
-      // the one centred over this bar belongs to this chat.
-      const rise = `${Math.round(mine.height)}px`
-      const pills = document.querySelectorAll(HOST_JUMP)
-      for (let index = 0; index < pills.length; index += 1) {
-        const pill = pills[index]
-        const rect = pill.getBoundingClientRect()
-        const center = (rect.left + rect.right) / 2
-        if (rect.width > 0 && center >= box.left && center <= box.right) {
-          pill.style.setProperty(JUMP_RISE, rise)
-          lifted.add(pill)
-        } else if (lifted.has(pill)) {
-          pill.style.removeProperty(JUMP_RISE)
-          lifted.delete(pill)
-        }
-      }
     }
-    function dropJumpRise() {
-      lifted.forEach((pill) => pill.style.removeProperty(JUMP_RISE))
-      lifted.clear()
-    }
-    function schedule() {
-      cancelAnimationFrame(frame)
-      frame = requestAnimationFrame(tick)
-    }
-    tick()
-    const observer = typeof ResizeObserver === 'function' ? new ResizeObserver(schedule) : null
-    if (observer && dockRef.current) observer.observe(dockRef.current)
-    const card = composerCardFrom(dockRef.current)
-    if (observer && card) {
-      observer.observe(card)
-      if (card.parentElement) observer.observe(card.parentElement)
-    }
-    window.addEventListener('resize', schedule)
-    window.addEventListener('scroll', schedule, true)
-    // Chrome stacked on the prompt (a banner, a queued-message strip) comes and
-    // goes as a sibling of the composer card, so only that one parent is
-    // watched, and only for direct children. The interval below catches
-    // anything else that moves the composer.
-    const stack = card && card.parentElement
-    const watch = stack && typeof MutationObserver === 'function'
-      ? new MutationObserver(schedule)
-      : null
-    if (watch) watch.observe(stack, { childList: true })
-    const timer = setInterval(tick, 400)
-    return () => {
-      cancelAnimationFrame(frame)
-      if (observer) observer.disconnect()
-      if (watch) watch.disconnect()
-      window.removeEventListener('resize', schedule)
-      window.removeEventListener('scroll', schedule, true)
-      clearInterval(timer)
-      overlay.removeEventListener('click', onChipClick)
-      dropJumpRise()
-    }
-  }, [hasFan])
+    measure()
+    const observer = new ResizeObserver(measure)
+    observer.observe(root)
+    return () => observer.disconnect()
+  }, [])
 
   // Keep the highlighted row inside the scrolling list.
   const menuAt = menu ? menu.at : -1
@@ -901,15 +769,103 @@ function SkillJudgeLive({ ctx, sessionId, storedId, isNew }) {
     else if (on.offsetTop + on.offsetHeight > list.scrollTop + list.clientHeight) list.scrollTop = on.offsetTop + on.offsetHeight - list.clientHeight
   }, [menuAt])
 
+  // The search list opens from the magnifier, which is its own trigger.
+  const searchMenu = jsxs(Popover, {
+    open: Boolean(menu && hasFan),
+    onOpenChange: (open) => { if (!open) setMenu(null); else if (!menu) toggleMenu() },
+    children: [
+      jsx(PopoverTrigger, { asChild: true, children: jsx(Button, {
+        type: 'button',
+        variant: 'ghost',
+        size: 'icon-xs',
+        className: 'hsj-more',
+        disabled: locked,
+        title: 'Search all skills',
+        'aria-label': 'Search all skills',
+        'aria-expanded': menu ? 'true' : 'false',
+        children: jsx(icons.Search, { 'aria-hidden': 'true' }),
+      }) }, 'trigger'),
+      menu && hasFan ? jsxs(PopoverContent, {
+        variant: 'menu',
+        side: 'top',
+        align: 'start',
+        sideOffset: 6,
+        className: 'hsj-menu shadow-nous',
+        'aria-label': 'Matching skills',
+        collisionPadding: 8,
+        children: [
+          jsxs('div', { className: 'hsj-menu-head', 'data-slot': 'command-input-wrapper', children: [
+            jsx(icons.Search, { 'aria-hidden': 'true' }, 'icon'),
+            jsx('input', {
+              className: 'hsj-menu-input',
+              'data-slot': 'command-input',
+              type: 'text',
+              autoFocus: true,
+              spellCheck: false,
+              value: menu.query,
+              placeholder: 'Search skills',
+              'aria-label': 'Search skills',
+              onChange: (event) => {
+                const value = event.target.value
+                setMenu((current) => (current ? { ...current, query: value, at: 0 } : current))
+              },
+              onKeyDown: onMenuKey,
+            }, 'input'),
+          ] }, 'head'),
+          jsx('div', {
+            className: 'hsj-menu-list dt-portal-scrollbar',
+            ref: menuListRef,
+            role: 'listbox',
+            children: menuRows.length ? menuRows.map((row, index) => {
+              const key = String(row.name || '').toLowerCase()
+              const state = loadedNames.has(key) ? 'loaded' : (heldKeys.includes(key) ? 'held' : '')
+              const starred = favKeys.has(key)
+              const first = index === 0 || row.section !== menuRows[index - 1].section
+              return [
+                first ? jsx('div', { className: 'hsj-menu-heading', children: row.section === 'Skills' ? `Skills (${menuRows.length})` : row.section }, `heading-${row.section}`) : null,
+                jsxs('div', {
+                  role: 'option',
+                  className: 'hsj-menu-row',
+                  'data-selected': index === menu.at ? 'true' : 'false',
+                  'aria-selected': index === menu.at ? 'true' : 'false',
+                  'aria-disabled': state === 'loaded' ? 'true' : 'false',
+                  title: row.description || row.name,
+                  onClick: () => pickFromMenu(row.name),
+                  onMouseMove: () => {
+                    if (menuRef.current && menuRef.current.at !== index) setMenu((current) => (current ? { ...current, at: index } : current))
+                  },
+                  children: [
+                    jsx('button', {
+                      type: 'button',
+                      className: starred ? 'hsj-menu-star on' : 'hsj-menu-star',
+                      title: starred ? 'Remove from favourites' : 'Add to favourites',
+                      'aria-label': starred ? `Remove ${row.name} from favourites` : `Add ${row.name} to favourites`,
+                      'aria-pressed': starred ? 'true' : 'false',
+                      onClick: (event) => {
+                        event.stopPropagation()
+                        toggleFavorite(row.name)
+                      },
+                      children: STAR,
+                    }, 'star'),
+                    jsx('span', { className: 'hsj-menu-name', children: row.name }, 'name'),
+                    jsx('span', { className: 'hsj-menu-desc', children: row.description || '' }, 'desc'),
+                    state === 'held' ? jsx(icons.Check, { className: 'hsj-menu-check', 'aria-hidden': 'true' }, 'state')
+                      : (state === 'loaded' ? jsx('span', { className: 'hsj-menu-note', children: 'loaded' }, 'state') : null),
+                  ],
+                }, `row-${row.name}`),
+              ]
+            }) : jsx('div', { className: 'hsj-menu-heading', children: menuQuery ? 'No skill matches' : 'Type to search every skill' }, 'empty'),
+          }, 'list'),
+        ],
+      }, 'content') : null,
+    ],
+  }, 'menu')
+
   return jsxs('div', {
     className: 'hsj-chrome',
     ref: dockRef,
+    hidden: !hasFan && !hint,
     children: [
-      jsx('div', {
-        className: 'hsj-overlay',
-        ref: overlayRef,
-        hidden: !hasFan,
-        children: [
           hasFan ? jsxs('div', {
             className: 'hsj-bar',
             children: [
@@ -920,29 +876,18 @@ function SkillJudgeLive({ ctx, sessionId, storedId, isNew }) {
                     className: 'hsj-chips',
                     children: [
                       locked
-                        ? jsx(Button, { type: 'button', variant: 'outline', size: 'icon-xs', className: 'hsj-unlock', title: 'No skills go with this message. Click to allow skills again.', 'aria-label': 'Allow skills again', children: jsx(icons.Lock, { 'aria-hidden': 'true' }) })
-                        : jsx(Button, { type: 'button', variant: 'ghost', size: 'icon-xs', className: 'hsj-trash', disabled: held.length === 0, title: held.length ? 'Remove all held skills and take none with this message' : 'No skills held', 'aria-label': 'Remove all held skills and take none with this message', children: jsx(icons.Trash2, { 'aria-hidden': 'true' }) }),
+                        ? jsx(Button, { type: 'button', variant: 'outline', size: 'icon-xs', className: 'hsj-unlock', onClick: unlock, title: 'No skills go with this message. Click to allow skills again.', 'aria-label': 'Allow skills again', children: jsx(icons.Lock, { 'aria-hidden': 'true' }) })
+                        : jsx(Button, { type: 'button', variant: 'ghost', size: 'icon-xs', className: 'hsj-trash', onClick: clearAll, disabled: held.length === 0, title: held.length ? 'Remove all held skills and take none with this message' : 'No skills held', 'aria-label': 'Remove all held skills and take none with this message', children: jsx(icons.Trash2, { 'aria-hidden': 'true' }) }),
                       // The shelf keeps its slot even when empty, so chips never shift.
-                      jsx(Magazine, { items: held, flying, width: magazineWidth(barWidth), locked }),
-                      jsx(Button, {
-                        type: 'button',
-                        variant: 'ghost',
-                        size: 'icon-xs',
-                        className: 'hsj-more',
-                        disabled: locked,
-                        title: 'Search all skills',
-                        'aria-label': 'Search all skills',
-                        'aria-expanded': menu ? 'true' : 'false',
-                        children: jsx(icons.Search, { 'aria-hidden': 'true' }),
-                      }),
-                      // Only the suggestions are clipped to one row; the magazine
-                      // stacks upward above the row and must stay visible.
+                      jsx(Magazine, { items: held, flying, width: magazineWidth(barWidth), locked, onDetach: (key) => detach(key, true) }),
+                      searchMenu,
                       jsx('div', { className: 'hsj-chip-list', children: shownSuggestions.map((candidate) => jsxs('button', {
                         type: 'button',
                         disabled: locked,
                         className: candidate.source === 'conversation' ? 'hsj-suggest-chip hsj-from-convo'
                           : (candidate.source === 'search' ? 'hsj-suggest-chip hsj-search-hit' : 'hsj-suggest-chip'),
                         'data-name': candidate.name,
+                        onClick: () => { if (commitRef.current) void commitRef.current(candidate.name) },
                         title: `${candidate.name} — hold it for your next message (nothing is sent). ${candidate.source === 'conversation' ? 'From the conversation' : 'From your draft'}${candidate.why ? ' · ' + candidate.why : ''}`,
                         style: { '--identity': candidate.color },
                         children: [
@@ -970,264 +915,33 @@ function SkillJudgeLive({ ctx, sessionId, storedId, isNew }) {
               }) : null,
             ],
           }) : null,
-          jsxs(Popover, {
-            open: Boolean(menu && hasFan),
-            onOpenChange: (open) => { if (!open) setMenu(null) },
-            children: [
-              jsx(PopoverTrigger, { asChild: true, children: jsx('span', { className: 'hsj-menu-anchor', 'aria-hidden': 'true', style: { height: `${menu ? menu.span : 1}px` } }) }, 'anchor'),
-              menu && hasFan ? jsxs(PopoverContent, {
-                variant: 'menu',
-                side: 'top',
-                align: 'start',
-                sideOffset: 6,
-                className: 'hsj-menu shadow-nous',
-                'aria-label': 'Matching skills',
-                onInteractOutside: (event) => {
-                  const target = event.target
-                  if (target && target.closest && target.closest('.hsj-more')) event.preventDefault()
-                },
-                children: [
-                  jsxs('div', { className: 'hsj-menu-head', 'data-slot': 'command-input-wrapper', children: [
-                    jsx(icons.Search, { 'aria-hidden': 'true' }, 'icon'),
-                    jsx('input', {
-                      className: 'hsj-menu-input',
-                      'data-slot': 'command-input',
-                      type: 'text',
-                      autoFocus: true,
-                      spellCheck: false,
-                      value: menu.query,
-                      placeholder: 'Search skills',
-                      'aria-label': 'Search skills',
-                      onChange: (event) => {
-                        const value = event.target.value
-                        setMenu((current) => (current ? { ...current, query: value, at: 0 } : current))
-                      },
-                      onKeyDown: onMenuKey,
-                    }, 'input'),
-                  ] }, 'head'),
-                  jsx('div', {
-                    className: 'hsj-menu-list dt-portal-scrollbar',
-                    ref: menuListRef,
-                    role: 'listbox',
-                    children: menuRows.length ? menuRows.map((row, index) => {
-                      const key = String(row.name || '').toLowerCase()
-                      const state = loadedNames.has(key) ? 'loaded' : (heldKeys.includes(key) ? 'held' : '')
-                      const starred = favKeys.has(key)
-                      const first = index === 0 || row.section !== menuRows[index - 1].section
-                      return [
-                        first ? jsx('div', { className: 'hsj-menu-heading', children: row.section === 'Skills' ? `Skills (${menuRows.length})` : row.section }, `heading-${row.section}`) : null,
-                        jsxs('div', {
-                          role: 'option',
-                          className: 'hsj-menu-row',
-                          'data-selected': index === menu.at ? 'true' : 'false',
-                          'aria-selected': index === menu.at ? 'true' : 'false',
-                          'aria-disabled': state === 'loaded' ? 'true' : 'false',
-                          title: row.description || row.name,
-                          onClick: () => pickFromMenu(row.name),
-                          onMouseMove: () => {
-                            if (menuRef.current && menuRef.current.at !== index) setMenu((current) => (current ? { ...current, at: index } : current))
-                          },
-                          children: [
-                            jsx('button', {
-                              type: 'button',
-                              className: starred ? 'hsj-menu-star on' : 'hsj-menu-star',
-                              title: starred ? 'Remove from favourites' : 'Add to favourites',
-                              'aria-label': starred ? `Remove ${row.name} from favourites` : `Add ${row.name} to favourites`,
-                              'aria-pressed': starred ? 'true' : 'false',
-                              onClick: (event) => {
-                                event.stopPropagation()
-                                toggleFavorite(row.name)
-                              },
-                              children: STAR,
-                            }, 'star'),
-                            jsx('span', { className: 'hsj-menu-name', children: row.name }, 'name'),
-                            jsx('span', { className: 'hsj-menu-desc', children: row.description || '' }, 'desc'),
-                            state === 'held' ? jsx(icons.Check, { className: 'hsj-menu-check', 'aria-hidden': 'true' }, 'state')
-                              : (state === 'loaded' ? jsx('span', { className: 'hsj-menu-note', children: 'loaded' }, 'state') : null),
-                          ],
-                        }, `row-${row.name}`),
-                      ]
-                    }) : jsx('div', { className: 'hsj-menu-heading', children: menuQuery ? 'No skill matches' : 'Type to search every skill' }, 'empty'),
-                  }, 'list'),
-                ],
-              }, 'content') : null,
-            ],
-          }, 'menu'),
-        ],
-      }),
       hint ? jsx('div', { className: 'hsj-quiet', children: hint }) : null,
     ],
   })
 }
 
-function extendStackTop(box, neighbors) {
-  let top = box.top
-  for (let index = 0; index < (neighbors || []).length; index += 1) {
-    const item = neighbors[index]
-    if (!item) continue
-    const height = item.bottom - item.top
-    if (height < 8 || height > 48) continue
-    // A strip of the composer's stack is about as wide as the composer; a small
-    // floating pill (the "N messages" jump button) is not part of it.
-    if (item.right - item.left < (box.right - box.left) * 0.6) continue
-    if (item.right < box.left + 40 || item.left > box.right - 20) continue
-    const gap = box.top - item.bottom
-    if (gap < -8 || gap > 14) continue
-    if (item.top < top - 0.5) top = item.top
-  }
-  return top
-}
-
-function stackTop(card, neighbors, wrappers) {
-  let top = extendStackTop(card, neighbors)
-  const wraps = wrappers || []
-  for (let index = 0; index < wraps.length; index += 1) {
-    const wrap = wraps[index]
-    if (!wrap) continue
-    if (wrap.bottom > card.bottom + 8 || wrap.bottom < card.top) continue
-    const rise = card.top - wrap.top
-    if (rise <= 0 || rise > 56) continue
-    if (wrap.left > card.left + 40 || wrap.right < card.right - 40) continue
-    if (wrap.top < top - 0.5) top = wrap.top
-  }
-  return top
-}
-
-// Hermes' own floating layers over the composer (its "/" and "@" menu, popovers).
-// They are not part of the composer's stack and never lift the bar.
-const HOST_DRAWER = '[data-slot="composer-completion-drawer"]'
-// Hermes' "N messages" jump pill, and the lift we give it.
-const HOST_JUMP = '.thread-jump-button'
-const JUMP_RISE = '--hsj-jump-rise'
-function isHostFloat(node) {
-  return Boolean(node && node.closest && node.closest(`${HOST_DRAWER}, [data-radix-popper-content-wrapper]`))
-}
-
-function pushStackRect(list, node, anchor, card) {
-  if (!node || node === card || !node.getBoundingClientRect) return
-  if (isHostFloat(node)) return
-  if (anchor && (node === anchor || (node.contains && node.contains(anchor)))) return
-  if (card && card.contains && card.contains(node)) return
-  const rect = node.getBoundingClientRect()
-  if (rect.width < 80 || rect.height < 1) return
-  list.push({ top: rect.top, bottom: rect.bottom, left: rect.left, right: rect.right })
-}
-
-function isOwnChrome(node) {
-  return Boolean(node && node.closest && (node.closest('.hsj-overlay') || node.closest('.hsj-chrome') || node.closest('.hsj-fan')))
-}
-
-function collectPaintedAbove(card, anchor, cardRect) {
-  const list = []
-  const seen = new Set()
-  function add(node) {
-    if (!node || seen.has(node) || node === card || isOwnChrome(node)) return
-    if (anchor && (node === anchor || (node.contains && node.contains(anchor)))) return
-    if (card && card.contains && card.contains(node)) return
-    seen.add(node)
-    pushStackRect(list, node, anchor, card)
-  }
-  if (typeof document !== 'undefined' && document.elementsFromPoint) {
-    const xs = [cardRect.left + 16, (cardRect.left + cardRect.right) / 2, cardRect.right - 16]
-    for (let dy = 2; dy <= 96; dy += 8) {
-      const y = cardRect.top - dy
-      if (y < 0) continue
-      for (let index = 0; index < xs.length; index += 1) {
-        const hit = document.elementsFromPoint(xs[index], y) || []
-        for (let inner = 0; inner < hit.length; inner += 1) add(hit[inner])
-      }
-    }
-  }
-  return list
-}
-
-// The tallest stack on the prompt the bar still climbs over (a runaway box is ignored).
-const DOCK_RISE_MAX = 320
-
-function composerStackBox(anchor) {
-  const card = composerCardFrom(anchor)
-  if (!card || !card.getBoundingClientRect) return null
-  const cardRect = card.getBoundingClientRect()
-  const neighbors = collectPaintedAbove(card, anchor, cardRect)
-  const wrappers = []
-  let node = card
-  for (let depth = 0; depth < 6 && node; depth += 1) {
-    let sib = node.previousElementSibling
-    while (sib) {
-      pushStackRect(neighbors, sib, anchor, card)
-      sib = sib.previousElementSibling
-    }
-    const parent = node.parentElement
-    if (!parent || parent === document.body || parent === document.documentElement) break
-    if (!(anchor && parent.contains(anchor))) pushStackRect(wrappers, parent, anchor, card)
-    node = parent
-  }
-  // Hermes' dock holds everything stacked on the prompt (goal, changed files,
-  // queued messages) and the composer itself; the bar goes right above it.
-  // Nothing outside the dock counts then: chat text scrolling behind the bar
-  // and the "N messages" pill made it jump while scrolling.
-  let top = stackTop(cardRect, neighbors, wrappers)
-  const dock = card.closest ? card.closest('[data-slot="composer-dock"]') : null
-  if (dock && dock.getBoundingClientRect) {
-    const dockTop = dock.getBoundingClientRect().top
-    const rise = cardRect.top - dockTop
-    if (rise >= -0.5 && rise <= DOCK_RISE_MAX) top = Math.min(dockTop, cardRect.top)
-  }
-  return {
-    top,
-    right: cardRect.right,
-    bottom: cardRect.bottom,
-    left: cardRect.left,
-  }
-}
-
-function composerCardFrom(anchor) {
-  if (!anchor || !anchor.closest) return null
-  const direct = anchor.closest('[data-slot="composer-surface"]')
-    || anchor.closest('[data-slot="composer-root"]')
-    || anchor.closest('form')
-  if (direct && direct.getBoundingClientRect) {
-    const rect = direct.getBoundingClientRect()
-    if (rect.width > 100 && rect.height > 30) return direct
-  }
-  let best = null
-  let bestArea = Infinity
-  let el = anchor.parentElement
-  for (let depth = 0; depth < 12 && el && el !== document.body && el !== document.documentElement; depth += 1, el = el.parentElement) {
-    if (!el.getBoundingClientRect) continue
-    const rect = el.getBoundingClientRect()
-    if (rect.width < 240 || rect.height < 40 || rect.height > 600) continue
-    let bordered = true
-    try {
-      const style = window.getComputedStyle(el)
-      const border = parseFloat(style.borderTopWidth) || 0
-      const radius = parseFloat(style.borderTopLeftRadius) || 0
-      bordered = border >= 0.5 || radius >= 2
-    } catch {
-      bordered = true
-    }
-    if (!bordered) continue
-    const area = rect.width * rect.height
-    if (area < bestArea) {
-      best = el
-      bestArea = area
-    }
-  }
-  return best
-}
-
-// The held pile, loaded like a magazine: the newest pill sits in one fixed
-// slot left of the chips and every earlier one is pushed up behind it, so the
-// chip row never changes width however many skills are held. Hover spreads
-// the stack upward to read it; click a pill to take it out.
-const MAG_SHOWN = 12
 const MAG_WIDTH = 176
-function Magazine({ items, flying, width = MAG_WIDTH, locked }) {
+// A held skill's pill; a click takes it off the pile.
+function heldPill(item, onDetach, extraClass, style) {
+  return jsxs('button', {
+    type: 'button',
+    className: ['hsj-held', item.auto ? 'hsj-held-auto' : '', extraClass || ''].join(' ').trim(),
+    'data-name': item.name,
+    title: `${item.auto ? 'Auto-attached' : 'Attached'} to your next message. Click to take it out.`,
+    style,
+    onClick: (event) => { event.stopPropagation(); if (onDetach) onDetach(String(item.name || '').toLowerCase()) },
+    children: [BOLT, jsx('span', { children: item.name })],
+  }, `held-${item.name}`)
+}
+
+// The pile keeps one fixed slot in the row: the newest pill and a count. The
+// card clips anything that rises out of the row, so hovering it opens an SDK
+// Popover with every held skill instead of spreading the stack upward.
+function Magazine({ items, flying, width = MAG_WIDTH, locked, onDetach }) {
   const [open, setOpen] = useState(false)
+  const closeRef = useRef(0)
+  useEffect(() => () => clearTimeout(closeRef.current), [])
   const count = items.length
-  const shown = items.slice(-MAG_SHOWN)
-  const rest = shown.length > 1 ? Math.min(7, 42 / (shown.length - 1)) : 0
-  const step = open ? 26 : rest
   if (!count) {
     return jsx('div', {
       className: locked ? 'hsj-mag hsj-mag-empty hsj-mag-locked' : 'hsj-mag hsj-mag-empty',
@@ -1236,38 +950,38 @@ function Magazine({ items, flying, width = MAG_WIDTH, locked }) {
       children: locked ? 'No skills this message' : null,
     })
   }
-  return jsxs('div', {
-    className: open ? 'hsj-mag hsj-mag-open' : 'hsj-mag',
-    style: { width: `${width}px` },
-    onMouseEnter: () => setOpen(true),
-    onMouseLeave: () => setOpen(false),
+  const top = items[count - 1]
+  const fly = flying && flying.names.includes(top.name)
+  const show = () => { clearTimeout(closeRef.current); if (count > 1) setOpen(true) }
+  const hide = () => { clearTimeout(closeRef.current); closeRef.current = setTimeout(() => setOpen(false), 180) }
+  return jsxs(Popover, {
+    open: open && count > 1 && !flying,
+    // Clicks on the slot remove pills; only hover opens the list.
+    onOpenChange: (next) => { if (!next) setOpen(false) },
     children: [
-      shown.map((item, index) => {
-        const depth = shown.length - 1 - index
-        const fly = flying && flying.names.includes(item.name)
-        const lift = -depth * step
-        return jsxs('button', {
-          type: 'button',
-          className: ['hsj-held', item.auto ? 'hsj-held-auto' : '', depth === 0 ? 'hsj-held-top' : ''].join(' ').trim(),
-          'data-name': item.name,
-          title: `${item.auto ? 'Auto-attached' : 'Attached'} to your next message. Click to take it out.`,
-          style: {
-            zIndex: shown.length - depth,
-            transform: fly
-              ? `translate(${flying.dx}px, ${lift}px) scale(.8)`
-              : `translateY(${lift}px) scale(${open ? 1 : 1 - Math.min(depth, 6) * 0.035})`,
-            opacity: fly ? 0 : (open || depth === 0 ? 1 : Math.max(0.35, 1 - depth * 0.13)),
-            transitionDelay: fly ? `${depth * 25}ms` : '0ms',
-          },
-          children: [BOLT, jsx('span', { children: item.name })],
-        }, `held-${item.name}`)
-      }),
-      count > 1 ? jsx(Badge, { variant: 'solid', size: 'xs', className: 'hsj-mag-count', title: `${count} skills held for the next message`, children: String(count) }) : null,
-      open && count > MAG_SHOWN ? jsx('span', {
-        className: 'hsj-mag-more',
-        style: { transform: `translateY(${-MAG_SHOWN * step}px)` },
-        children: `+${count - MAG_SHOWN} more`,
-      }) : null,
+      jsx(PopoverTrigger, { asChild: true, children: jsxs('div', {
+        className: 'hsj-mag',
+        style: { width: `${width}px` },
+        onMouseEnter: show,
+        onMouseLeave: hide,
+        children: [
+          heldPill(top, onDetach, 'hsj-held-top', fly ? { transform: `translateX(${flying.dx}px) scale(.8)`, opacity: 0 } : undefined),
+          count > 1 ? jsx(Badge, { variant: 'solid', size: 'xs', className: 'hsj-mag-count', title: `${count} skills held for the next message`, children: String(count) }, 'count') : null,
+        ],
+      }) }, 'trigger'),
+      jsx(PopoverContent, {
+        side: 'top',
+        align: 'start',
+        sideOffset: 6,
+        collisionPadding: 8,
+        className: 'hsj-pop hsj-pile',
+        'aria-label': 'Held skills',
+        onMouseEnter: show,
+        onMouseLeave: hide,
+        onOpenAutoFocus: (event) => event.preventDefault(),
+        onCloseAutoFocus: (event) => event.preventDefault(),
+        children: items.slice().reverse().map((item) => heldPill(item, onDetach, '', undefined)),
+      }, 'pile'),
     ],
   })
 }
@@ -1286,17 +1000,13 @@ function Fan({ skills, barWidth, activeName, pinnedName, body, onShow, onSpread,
   const layout = fanLayout(skills.length, fanMaxWidth(barWidth), skills.map((skill) => fanChipWidth(skill.name)))
   const activeIndex = skills.findIndex((skill) => skill.name === activeName)
   const shown = activeIndex >= 0 ? skills[activeIndex] : null
-  // The card floats above the fan and takes no room in the row, so opening it
-  // never squeezes the suggestion chips. It centres over the hovered strip,
-  // never past the fan's right end nor the bar's left end.
-  const detailWidth = barWidth ? Math.min(DETAIL_W, barWidth - 16) : DETAIL_W
-  let detailRight = 0
-  if (shown) {
-    const lane = layout.lanes[activeIndex]
-    const center = lane.left + lane.width / 2
-    const room = Math.max(0, (barWidth || layout.width) - detailWidth)
-    detailRight = Math.max(0, Math.min(room, layout.width - center - detailWidth / 2))
-  }
+  // The card is an SDK Popover over the hovered strip (the composer card clips
+  // anything that rises out of the row). Leaving the fan closes it after a
+  // short delay, so the pointer can move from the strip into the card.
+  const closeRef = useRef(0)
+  const holdOpen = () => clearTimeout(closeRef.current)
+  const closeSoon = () => { clearTimeout(closeRef.current); closeRef.current = setTimeout(() => live.current.onCollapse(), 220) }
+  useEffect(() => () => clearTimeout(closeRef.current), [])
 
   useLayoutEffect(() => {
     const root = rootRef.current
@@ -1308,26 +1018,16 @@ function Fan({ skills, barWidth, activeName, pinnedName, body, onShow, onSpread,
     function onOver(event) {
       const name = laneName(event.target)
       if (name) {
+        clearTimeout(closeRef.current)
         live.current.onSpread()
         live.current.onShow(name)
       }
     }
     function onLeave() {
-      live.current.onCollapse()
+      clearTimeout(closeRef.current)
+      closeRef.current = setTimeout(() => live.current.onCollapse(), 220)
     }
     function onClick(event) {
-      const keep = event.target && event.target.closest ? event.target.closest('.hsj-keep') : null
-      if (keep) {
-        const name = keep.getAttribute('data-name')
-        if (name) live.current.onKeep(name)
-        return
-      }
-      const view = event.target && event.target.closest ? event.target.closest('.hsj-view') : null
-      if (view) {
-        const name = view.getAttribute('data-name')
-        if (name) live.current.onView(name)
-        return
-      }
       const name = laneName(event.target)
       if (name) live.current.onPin(name)
     }
@@ -1341,53 +1041,73 @@ function Fan({ skills, barWidth, activeName, pinnedName, body, onShow, onSpread,
     }
   }, [])
 
+  const lane = shown ? layout.lanes[activeIndex] : null
+  const card = jsxs(Popover, {
+    open: Boolean(shown),
+    onOpenChange: (next) => { if (!next) live.current.onCollapse() },
+    children: [
+      jsx(PopoverTrigger, { asChild: true, children: jsx('span', {
+        className: 'hsj-card-anchor',
+        'aria-hidden': 'true',
+        style: lane ? { left: `${lane.left}px`, width: `${lane.width}px` } : { left: '0px', width: '1px' },
+      // A new anchor per skill, so the card re-positions over each strip.
+      }) }, `anchor-${shown ? shown.name : ''}`),
+      shown ? jsx(PopoverContent, {
+        side: 'top',
+        align: 'center',
+        sideOffset: 8,
+        collisionPadding: 8,
+        className: 'hsj-pop hsj-detail-pop',
+        'aria-label': shown.name,
+        onMouseEnter: holdOpen,
+        onMouseLeave: () => { if (!live.current.pinnedName) closeSoon() },
+        onOpenAutoFocus: (event) => event.preventDefault(),
+        onCloseAutoFocus: (event) => event.preventDefault(),
+        children: jsxs('article', {
+          className: body && body.name === shown.name ? 'hsj-detail open hsj-detail-body' : 'hsj-detail open',
+          style: { '--identity': shown.color },
+          children: [
+            jsxs('div', {
+              className: 'hsj-detail-head',
+              children: [
+                jsx('span', { className: 'hsj-detail-dot' }, 'dot'),
+                jsx('span', { className: 'hsj-detail-name', children: shown.name }, 'name'),
+                jsx('span', { className: 'hsj-tag', children: categoryLabel(shown) }, 'tag'),
+              ],
+            }, 'head'),
+            jsx('p', { className: 'hsj-detail-desc', children: shown.description || 'No description.' }, 'desc'),
+            jsxs('div', {
+              className: 'hsj-detail-foot',
+              children: [
+                jsx('span', { children: detailMeta(shown) }, 'meta'),
+                jsxs('span', { className: 'hsj-detail-actions', children: [
+                  jsxs(Button, {
+                    type: 'button',
+                    variant: 'outline',
+                    size: 'xs',
+                    className: shown.sticky ? 'hsj-keep on' : 'hsj-keep',
+                    'data-name': shown.name,
+                    'aria-pressed': shown.sticky ? 'true' : 'false',
+                    title: shown.sticky ? 'Comes back to your pile after the chat is compacted. Click to stop.' : 'Put this skill back on your pile after the chat is compacted',
+                    onClick: () => live.current.onKeep(shown.name),
+                    children: [jsx(icons.Pin, { 'aria-hidden': 'true' }, 'icon'), shown.sticky ? 'Kept' : 'Keep'],
+                  }, 'keep'),
+                  jsx(Button, { type: 'button', variant: 'outline', size: 'xs', className: 'hsj-view', 'data-name': shown.name, onClick: () => live.current.onView(shown.name), children: 'View body' }, 'view'),
+                ] }, 'actions'),
+              ],
+            }, 'foot'),
+            body && body.name === shown.name ? jsx('pre', { className: 'hsj-body', children: body.body || '' }, 'body') : null,
+          ],
+        }),
+      }, 'card') : null,
+    ],
+  })
+
   return jsxs('div', {
     className: 'hsj-fan',
     ref: rootRef,
     style: { width: `${layout.width}px` },
     children: [
-      jsx('div', {
-        className: shown ? 'hsj-detail-wrap open' : 'hsj-detail-wrap',
-        style: { right: `${detailRight}px`, width: `${detailWidth}px` },
-        children: jsxs('article', {
-        className: shown
-          ? (body && body.name === shown.name ? 'hsj-detail open hsj-detail-body' : 'hsj-detail open')
-          : 'hsj-detail',
-        style: shown ? { '--identity': shown.color } : undefined,
-        'aria-hidden': shown ? 'false' : 'true',
-        children: shown ? [
-          jsxs('div', {
-            className: 'hsj-detail-head',
-            children: [
-              jsx('span', { className: 'hsj-detail-dot' }),
-              jsx('span', { className: 'hsj-detail-name', children: shown.name }),
-              jsx('span', { className: 'hsj-tag', children: categoryLabel(shown) }),
-            ],
-          }),
-          jsx('p', { className: 'hsj-detail-desc', children: shown.description || 'No description.' }),
-          jsxs('div', {
-            className: 'hsj-detail-foot',
-            children: [
-              jsx('span', { children: detailMeta(shown) }),
-              jsxs('span', { className: 'hsj-detail-actions', children: [
-                jsxs(Button, {
-                  type: 'button',
-                  variant: 'outline',
-                  size: 'xs',
-                  className: shown.sticky ? 'hsj-keep on' : 'hsj-keep',
-                  'data-name': shown.name,
-                  'aria-pressed': shown.sticky ? 'true' : 'false',
-                  title: shown.sticky ? 'Comes back to your pile after the chat is compacted. Click to stop.' : 'Put this skill back on your pile after the chat is compacted',
-                  children: [jsx(icons.Pin, { 'aria-hidden': 'true' }, 'icon'), shown.sticky ? 'Kept' : 'Keep'],
-                }, 'keep'),
-                jsx(Button, { type: 'button', variant: 'outline', size: 'xs', className: 'hsj-view', 'data-name': shown.name, children: 'View body' }, 'view'),
-              ] }),
-            ],
-          }),
-          body && body.name === shown.name ? jsx('pre', { className: 'hsj-body', children: body.body || '' }) : null,
-        ] : null,
-        }),
-      }),
       jsxs('div', {
         className: 'hsj-fan-row',
         style: { width: `${layout.width}px` },
@@ -1403,14 +1123,7 @@ function Fan({ skills, barWidth, activeName, pinnedName, body, onShow, onSpread,
             'aria-hidden': 'true',
             children: jsx('span', { className: 'hsj-fan-name', children: skill.name }),
           }, `chip-${skill.name}`)),
-          // The hovered chip stays put (only its outline changes) and a copy with
-          // the full name floats above it, so nothing underneath is uncovered.
-          shown ? jsx('div', {
-            className: 'hsj-fan-lift',
-            style: { left: `${layout.left[activeIndex]}px`, minWidth: `${layout.widths[activeIndex]}px`, '--identity': shown.color },
-            'aria-hidden': 'true',
-            children: shown.name,
-          }, 'lift') : null,
+          card,
           ...skills.map((skill, index) => jsx('button', {
             type: 'button',
             className: 'hsj-fan-lane',
@@ -1431,16 +1144,12 @@ function ensureStyles() {
   const style = document.createElement('style')
   style.id = STYLE_ID
   style.textContent = `
-.hsj-chrome { display: flex; justify-content: flex-end; align-items: center; width: 100%; min-width: 0; color: var(--ui-text-secondary); }
-/* Under <body>, so above the whole chat pane (it isolates its layers). Where Hermes' / menu
-   covers the bar, tick() clips the bar instead (see HOST_DRAWER). */
-/* Chips stack on each other and float over the chat, so their fill is the theme's
-   elevated colour made opaque: a translucent theme would show the chip beneath. */
-/* Hermes' jump pill sits 1rem over its dock; while our bar shows, it sits over the bar. */
-.thread-jump-button { bottom: calc(var(--composer-measured-height) + 1rem + var(--hsj-jump-rise, 0px)) !important; }
-.hsj-overlay { position: fixed; z-index: 29; pointer-events: none; --hsj-surface: rgb(from var(--ui-bg-elevated) r g b / 1); }
-.hsj-overlay[hidden] { display: none; }
-.hsj-bar { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; width: 100%; pointer-events: auto; }
+.hsj-chrome { display: block; width: 100%; min-width: 0; color: var(--ui-text-secondary); }
+.hsj-chrome[hidden] { display: none; }
+/* Chips overlap in the fan and sit on whatever the composer card paints, so their fill
+   is the theme's elevated colour made opaque. The popovers carry the same token. */
+.hsj-chrome, .hsj-pop { --hsj-surface: rgb(from var(--ui-bg-elevated) r g b / 1); }
+.hsj-bar { display: flex; align-items: center; justify-content: space-between; gap: 16px; width: 100%; min-width: 0; }
 .hsj-suggest { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
 .hsj-hint, .hsj-status { font-size: 0.6875rem; color: var(--ui-text-tertiary); }
 .hsj-chips { display: flex; flex-wrap: nowrap; gap: 6px; align-items: center; width: 100%; min-width: 0; }
@@ -1457,25 +1166,26 @@ function ensureStyles() {
 .hsj-held.hsj-held-auto { border-style: dashed; }
 .hsj-held:hover { border-color: var(--ui-accent); }
 .hsj-mag { position: relative; flex: 0 0 auto; height: 22px; align-self: center; }
+.hsj-pile { display: flex; flex-direction: column; gap: 4px; width: max-content; max-width: 320px; max-height: 50vh; overflow-y: auto; padding: 6px; }
+.hsj-pile .hsj-held { justify-content: flex-start; }
 .hsj-mag-empty { box-sizing: border-box; border: 1px dashed var(--ui-stroke-secondary); border-radius: 3px; opacity: .35; }
-.hsj-mag .hsj-held { position: absolute; left: 0; bottom: 0; width: 100%; height: 22px; overflow: hidden; padding: 0 8px; box-sizing: border-box; transform-origin: left bottom; transition: transform 260ms cubic-bezier(.2,.8,.2,1), opacity 260ms ease-out; }
+.hsj-mag .hsj-held { position: absolute; left: 0; bottom: 0; width: 100%; height: 22px; overflow: hidden; padding: 0 8px; box-sizing: border-box; transform-origin: left center; transition: transform 520ms cubic-bezier(.2,.8,.2,1), opacity 520ms ease-out; }
 .hsj-mag .hsj-held span { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; }
 .hsj-mag .hsj-held-top { animation: hsj-load 260ms cubic-bezier(.2,.8,.2,1); }
 @keyframes hsj-load { from { margin-left: 34px; opacity: 0; } to { margin-left: 0; opacity: 1; } }
 .hsj-mag-count { position: absolute; right: -6px; top: -7px; z-index: 99; pointer-events: none; }
-.hsj-mag-more { position: absolute; left: 0; bottom: 26px; font-size: 0.65rem; color: var(--ui-text-tertiary); white-space: nowrap; pointer-events: none; }
 .hsj-ctx { font-size: 0.6rem; letter-spacing: 0.04em; border: 1px solid currentColor; border-radius: 3px; padding: 0 3px; }
 .hsj-quiet { font-size: 0.6875rem; color: var(--ui-text-tertiary); }
-.hsj-fan { position: relative; margin-left: auto; flex: 0 0 auto; align-self: flex-end; max-width: 100%; }
-.hsj-detail-wrap { position: absolute; bottom: 100%; z-index: 999; padding-bottom: 14px; pointer-events: none; }
-.hsj-detail-wrap.open { pointer-events: auto; }
+.hsj-fan { position: relative; margin-left: auto; flex: 0 0 auto; align-self: center; max-width: 100%; }
+.hsj-card-anchor { position: absolute; top: 0; height: 22px; pointer-events: none; }
+/* The card's own frame is the article; the popover around it paints nothing. */
+.hsj-detail-pop { width: 324px; max-width: calc(100vw - 16px); padding: 0 !important; border: 0 !important; background: transparent !important; box-shadow: none !important; }
 .hsj-fan-row { position: relative; height: 22px; margin-left: auto; }
-.hsj-fan-lane { position: absolute; top: -12px; height: 34px; z-index: 1000; padding: 0; border: 0; background: transparent; cursor: pointer; }
+.hsj-fan-lane { position: absolute; top: 0; height: 22px; z-index: 1000; padding: 0; border: 0; background: transparent; cursor: pointer; }
 .hsj-fan-chip.released { border-style: dashed; color: var(--ui-text-tertiary); }
 .hsj-fan-chip.reloaded { border-color: color-mix(in srgb, var(--ui-green) 70%, var(--ui-stroke-secondary)); color: var(--ui-green); }
 .hsj-fan-chip { position: absolute; top: 0; display: flex; justify-content: flex-end; align-items: center; gap: 6px; width: 140px; box-sizing: border-box; height: 22px; padding: 0 8px; pointer-events: none; overflow: hidden; border: 1px solid var(--ui-stroke-secondary); border-radius: 3px; background: var(--hsj-surface); color: var(--ui-text-secondary); font: 0.65rem/20px var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace); transition: left 180ms ease-out, transform 160ms ease-out, width 160ms ease-out, opacity 200ms, border-color 180ms ease-out; }
 .hsj-fan-chip.active { border-color: var(--identity, var(--ui-accent)); }
-.hsj-fan-lift { position: absolute; top: 0; z-index: 1001; transform: translateY(-14px); box-sizing: border-box; width: max-content; min-width: 0; max-width: 280px; height: 22px; padding: 0 8px; border: 1px solid var(--identity, var(--ui-accent)); border-radius: 3px; background: var(--hsj-surface); color: var(--ui-text-primary, var(--ui-text-secondary)); font: 0.65rem/20px var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: none; }
 .hsj-fan-name { display: block; flex: 0 1 auto; min-width: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; direction: rtl; text-align: right; }
 .hsj-fan-pct { display: block; flex: 0 0 auto; border-radius: 3px; padding: 0 4px; background: color-mix(in srgb, var(--identity, var(--ui-accent)) 12%, transparent); color: var(--identity, var(--ui-accent)); font: 0.6rem/14px var(--font-sans, sans-serif); }
 .hsj-chevron { display: block; flex: 0 0 6px; width: 6px; height: 6px; position: relative; }
@@ -1500,7 +1210,6 @@ function ensureStyles() {
 .hsj-unlock { color: var(--ui-accent); border-color: var(--ui-accent); }
 .hsj-suggest-chip:disabled { cursor: default; border-color: var(--ui-stroke-secondary); background: var(--hsj-surface); color: var(--ui-text-tertiary); opacity: .55; }
 .hsj-mag-locked { display: flex; align-items: center; padding: 0 8px; border-style: solid; opacity: 1; font-size: 0.65rem; color: var(--ui-text-tertiary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.hsj-menu-anchor { position: absolute; left: 0; top: 0; width: 1px; pointer-events: none; }
 .hsj-menu { width: 26rem; max-width: calc(100vw - 16px); padding: 0; overflow: hidden; border-radius: 12px; border: 1px solid var(--stroke-nous, var(--ui-stroke-secondary)); background: var(--ui-chat-bubble-background, var(--ui-bg-elevated)); color: var(--ui-text-primary, var(--ui-text-secondary)); font-size: 0.75rem; }
 .hsj-menu-head { display: flex; align-items: center; gap: 8px; height: 2.75rem; padding: 0 12px; border-bottom: 1px solid var(--border, var(--ui-stroke-secondary)); background: color-mix(in srgb, var(--ui-text-primary, currentColor) 4%, transparent); }
 .hsj-menu-head:focus-within { border-bottom-color: var(--ring, var(--theme-primary, var(--ui-accent))); }
@@ -1731,7 +1440,6 @@ const FAN_MIN = 150
 const FAN_CHIP_W = 140
 const FAN_CHIP_MIN = 96
 const FAN_STEP_MAX = 56
-const DETAIL_W = 324
 
 // Share of the bar each pile may take, so the suggestions keep the middle.
 function fanMaxWidth(barWidth) {

@@ -11,7 +11,7 @@ Catalog: the 3 demo skills (`git-commit`, `pr-review`, `weather-brief`) plus at 
 | # | Do | Expect |
 | --- | --- | --- |
 | 1.1 | `python run.py status` | The skill count matches your folders. |
-| 1.2 | Open Hermes Desktop, type anything in the prompt | A row of chips appears above the prompt, each with a percentage. |
+| 1.2 | Open Hermes Desktop, type anything in the prompt | A row of chips appears at the top of the prompt box, each with a percentage. |
 | 1.3 | Add a new folder with one `SKILL.md` to a connected skill folder | Within a few seconds `python run.py list` shows it. |
 | 1.4 | Edit that `SKILL.md`'s description and save | `python run.py list` shows the new description. |
 | 1.5 | Delete that folder | It leaves `python run.py list`. |
@@ -32,7 +32,7 @@ Catalog: the 3 demo skills (`git-commit`, `pr-review`, `weather-brief`) plus at 
 | # | Do | Expect |
 | --- | --- | --- |
 | 3.1 | Type `help me with my change`, click the `git-commit` chip | A pill appears on the left pile; the prompt text is unchanged; the row refills. |
-| 3.2 | Click two more chips | The pile stacks with a count badge; hovering spreads it. |
+| 3.2 | Click two more chips | The pile shows the newest pill with a count badge; hovering it lists every held skill. |
 | 3.3 | Click a pill on the pile | That skill leaves the pile and can come back as a chip. |
 | 3.4 | Send the message | The pills fly to the fan on the right; the chips hide while the reply runs and return after. |
 | 3.5 | Ask `Quote the Marker line of the skill you were given.` | The answer is `COMMIT_BODY_ONLY`, without a `skill_view` or `skill_load` call. |
@@ -70,9 +70,9 @@ Catalog: the 3 demo skills (`git-commit`, `pr-review`, `weather-brief`) plus at 
 
 | # | Do | Expect |
 | --- | --- | --- |
-| 7.1 | In a chat with a goal or a changed-files row above the prompt | The chip row sits above those rows, never on them. |
-| 7.2 | Type `/` | Hermes' menu opens over the chip row; the row does not jump up. |
-| 7.3 | In a long chat, scroll up | Hermes' "N messages" button shows just above the chips; the chip row does not move while you scroll. |
+| 7.1 | In a chat with a goal or a changed-files row above the prompt | Those rows stay where Hermes puts them; the chip row is inside the prompt box, below them. |
+| 7.2 | Type `/` | Hermes' menu opens above the prompt box; the chip row stays in place. |
+| 7.3 | In a long chat, scroll up | Hermes' "N messages" button shows above the prompt box, clear of the chips; the chip row does not move. |
 | 7.4 | Make the window narrow, then wide | The row fits the composer's width; nothing spills off screen. |
 
 ## 8. Long chats

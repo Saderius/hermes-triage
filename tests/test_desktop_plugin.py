@@ -18,7 +18,7 @@ class DesktopPluginTests(unittest.TestCase):
             self.assertNotIn(gone, text)
         for present in (
             "hsj-more", "hsj-trash", "hsj-unlock", "hsj-menu-list", "icons.Trash2", "if (lockedRef.current) return",
-            "PopoverContent", "variant: 'menu'", "hsj-menu-anchor", "disabled: held.length === 0",
+            "PopoverContent", "variant: 'menu'", "const searchMenu", "disabled: held.length === 0",
         ):
             self.assertIn(present, text)
 
@@ -46,13 +46,11 @@ class DesktopPluginTests(unittest.TestCase):
         self.assertIn("hsj-ctx", text)
         self.assertIn("hsj-fan", text)
         self.assertIn("COMPOSER_AREAS.top", text)
-        self.assertIn("hsj-overlay", text)
-        self.assertIn("document.body.appendChild", text)
-        self.assertIn("elementsFromPoint", text)
-        self.assertIn("composerCardFrom", text)
-        self.assertIn("composerStackBox", text)
-        self.assertIn("extendStackTop", text)
-        self.assertIn("position: fixed", text)
+        # Catalog review (#154048): the bar lives in the composer.top slot and
+        # no longer floats under <body> measuring Hermes' composer.
+        for gone in ("hsj-overlay", "document.body.appendChild", "elementsFromPoint", "composerCardFrom",
+                     "composerStackBox", "extendStackTop", "position: fixed"):
+            self.assertNotIn(gone, text)
         # catalog rule 8: no document-wide MutationObserver over Hermes' UI
         self.assertNotIn("observe(document.body", text)
         self.assertNotIn("subtree: true", text)
@@ -115,63 +113,28 @@ check(fanLayout(1, FAN_MAX, [fanChipWidth('plan')]).width < 60, 'a short name ge
         completed = subprocess.run(["node", "-e", script], capture_output=True, text=True, check=False)
         self.assertEqual(completed.returncode, 0, completed.stderr)
 
-    def test_bar_clears_the_whole_composer_dock(self) -> None:
+    def test_bar_stays_inside_the_sdk_surface(self) -> None:
+        """Catalog rule 8 and the review of NousResearch/hermes-agent#154048."""
         text = PLUGIN.read_text(encoding="utf-8")
-        self.assertIn('[data-slot="composer-dock"]', text)
-        self.assertIn("DOCK_RISE_MAX", text)
-        self.assertIn("layout.widths[index]", text)
-
-    def test_jump_pill_rises_over_the_bar_and_scrolling_does_not_move_it(self) -> None:
-        text = PLUGIN.read_text(encoding="utf-8")
-        # The dock alone sets the bar's height: chat text behind it is ignored.
-        self.assertIn("top = Math.min(dockTop, cardRect.top)", text)
-        self.assertNotIn("if (dockTop < top &&", text)
-        # Hermes' pill (found by place, the composer is not in its pane) is
-        # lifted by the bar's height and reset when the bar goes.
-        self.assertIn(".thread-jump-button { bottom:", text)
-        self.assertIn("var(--hsj-jump-rise, 0px)", text)
-        self.assertIn("pill.style.setProperty(JUMP_RISE, rise)", text)
-        # Defined once, called when the bar leaves the screen and on cleanup.
-        self.assertIn("function dropJumpRise()", text)
-        self.assertEqual(text.count("dropJumpRise()"), 3)
-        self.assertNotIn("composer-bounds", text)
-
-    def test_fan_card_floats_above_and_takes_no_room(self) -> None:
-        text = PLUGIN.read_text(encoding="utf-8")
-        wrap = re.search(r"\.hsj-detail-wrap \{([^}]+)\}", text)
-        self.assertIsNotNone(wrap)
-        self.assertIn("position: absolute", wrap.group(1))
-        self.assertIn("bottom: 100%", wrap.group(1))
-        self.assertNotIn("rootWidth", text)  # the fan never widens for the card
-
-    def test_fan_clears_chrome_stacked_on_the_prompt(self) -> None:
-        text = PLUGIN.read_text(encoding="utf-8")
-        start = text.index("function extendStackTop")
-        end = text.index("function pushStackRect")
-        script = text[start:end] + """
-const card = { top: 620, bottom: 710, left: 200, right: 1100 }
-const banner = { top: 576, bottom: 612, left: 200, right: 1100 }
-const above = { top: 540, bottom: 568, left: 200, right: 1100 }
-const transcript = { top: 80, bottom: 560, left: 200, right: 1100 }
-const rail = { top: 560, bottom: 600, left: 0, right: 160 }
-if (extendStackTop(card, [banner]) !== 576) process.exit(1)
-if (extendStackTop(card, [banner, above]) !== 576) process.exit(1)
-if (extendStackTop(card, [transcript]) !== 620) process.exit(1)
-if (extendStackTop(card, [rail]) !== 620) process.exit(1)
-const wrapped = stackTop(card, [], [{ top: 576, bottom: 710, left: 200, right: 1100 }])
-if (wrapped !== 576) process.exit(1)
-const column = stackTop(card, [], [{ top: 40, bottom: 900, left: 180, right: 1120 }])
-if (column !== 620) process.exit(1)
-"""
-        completed = subprocess.run(["node", "-e", script], capture_output=True, text=True, check=False)
-        self.assertEqual(completed.returncode, 0, completed.stderr)
-
-    def test_host_floats_do_not_lift_the_bar(self) -> None:
-        text = PLUGIN.read_text(encoding="utf-8")
-        self.assertIn("function isHostFloat", text)
-        self.assertIn("composer-completion-drawer", text)
-        self.assertIn("node.style.clipPath", text)
-        self.assertIn("(box.right - box.left) * 0.6", text)
+        code = re.sub(r"/\*.*?\*/|(?<![:\w])//[^\n]*", "", text, flags=re.S)
+        # The same two refusals Hermes' validator applies (hermes_cli/plugin_validate_desktop.py).
+        self.assertIsNone(re.search(
+            r"\bdocument\.(?:querySelector(?:All)?|getElementsBy\w+|getElementById)\(\s*[`'\"][^`'\"]*\[data-(?:slot|tour|sidebar|testid)\b",
+            code))
+        self.assertIsNone(re.search(r"\.observe\(\s*document\.body\s*,\s*\{[^}]*\b(?:childList|subtree)\b", code))
+        # And its review cue: no selector on the app's markup anywhere.
+        self.assertIsNone(re.search(r"\[data-(?:slot|tour|sidebar|testid|tree-[\w-]+|pane-host|titlebar-cluster)\b", code))
+        for gone in ("thread-jump-button", "composer-completion-drawer", "composer-dock", "contenteditable",
+                     "document.body", "!important; }\n.hsj-overlay", "clipPath"):
+            self.assertNotIn(gone, code)
+        # The draft comes only from the SDK; floating parts are SDK popovers.
+        self.assertIn("host.composer.getDraft", code)
+        self.assertEqual(code.count("host.composer.getDraft"), code.count("getDraft("))
+        for present in ("hsj-detail-pop", "hsj-pile", "hsj-card-anchor", "jsx(PopoverTrigger, { asChild: true, children: jsx(Button",
+                        "onClick: clearAll", "onClick: unlock", "onDetach", "layout.widths[index]"):
+            self.assertIn(present, code)
+        # The card sits outside the fan, so a press inside it must not dismiss the fan.
+        self.assertIn("target.closest('.hsj-fan, .hsj-detail-pop')", code)
 
     def test_list_has_stars_fixed_size_and_card_keep(self) -> None:
         text = PLUGIN.read_text(encoding="utf-8")
