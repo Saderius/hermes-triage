@@ -810,11 +810,10 @@ function SkillJudgeLive({ ctx, sessionId, storedId, isNew }) {
         'aria-label': 'Matching skills',
         collisionPadding: 8,
         children: [
-          jsxs('div', { className: 'hsj-menu-head', 'data-slot': 'command-input-wrapper', children: [
+          jsxs('div', { className: 'hsj-menu-head', children: [
             jsx(icons.Search, { 'aria-hidden': 'true' }, 'icon'),
             jsx('input', {
               className: 'hsj-menu-input',
-              'data-slot': 'command-input',
               type: 'text',
               autoFocus: true,
               spellCheck: false,

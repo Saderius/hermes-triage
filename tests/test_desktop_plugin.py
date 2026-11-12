@@ -150,8 +150,10 @@ check(fanLayout(1, FAN_MAX, [fanChipWidth('plan')]).width < 60, 'a short name ge
         text = PLUGIN.read_text(encoding="utf-8")
         for gone in ("More (", "'All skills'", "hsj-held-sep", "moreCount", "fullMatches"):
             self.assertNotIn(gone, text)
-        for present in ("title: 'Search all skills'", "'data-slot': 'command-input-wrapper'", ".slice(0, size)"):
+        for present in ("title: 'Search all skills'", ".slice(0, size)"):
             self.assertIn(present, text)
+        # Styled by its own classes, not by borrowing Hermes' data-slot names.
+        self.assertNotIn("'data-slot'", text)
 
 
 class LocalSearchTests(unittest.TestCase):
