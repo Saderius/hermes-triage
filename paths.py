@@ -14,8 +14,16 @@ LEGACY_NAMES = ("hermes-skill-judge",)
 def hermes_home() -> Path:
     """Active Hermes profile directory.
 
-    ``HERMES_HOME`` wins. Otherwise ``~/.hermes``.
+    Hermes' own ``hermes_constants.get_hermes_home()`` decides (it follows the
+    active profile). Outside Hermes (the standalone CLI, tests): ``HERMES_HOME``,
+    else ``~/.hermes``.
     """
+    try:
+        from hermes_constants import get_hermes_home
+
+        return Path(get_hermes_home())
+    except Exception:
+        pass
     override = os.environ.get("HERMES_HOME")
     if override:
         return Path(override).expanduser()

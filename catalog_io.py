@@ -277,6 +277,19 @@ def _create(store: SkillStore, name: str, content: object) -> dict:
     }
 
 
+def _confined(directory: Path, rel: Path) -> Path | None:
+    """``directory / rel`` with links resolved, or None when it lands outside ``directory``.
+
+    A symlinked subfolder (``references`` pointing elsewhere) would otherwise
+    redirect a write or a delete out of the skill."""
+    target = (directory / rel).resolve()
+    try:
+        target.relative_to(directory.resolve())
+    except ValueError:
+        return None
+    return target
+
+
 def _rewrite_skill_md(store: SkillStore, skill: Skill, content: str) -> dict:
     directory = _ensure_dir(store, skill)
     (directory / "SKILL.md").write_text(content, encoding="utf-8")
@@ -300,7 +313,9 @@ def _patch(store: SkillStore, skill: Skill, args: dict) -> dict:
     if rel is None:
         return _fail("file_path escapes the skill directory.")
     directory = _ensure_dir(store, skill)
-    target = directory / rel
+    target = _confined(directory, rel)
+    if target is None:
+        return _fail(f"file_path {rel.as_posix()!r} escapes skill {skill.name!r}.")
     if not target.is_file():
         return _fail(f"File {rel.as_posix()!r} was not found in skill {skill.name!r}.")
     text = target.read_text(encoding="utf-8")
@@ -335,7 +350,9 @@ def _write_support(store: SkillStore, skill: Skill, file_path: object, file_cont
     if len(file_content.encode("utf-8")) > _MAX_FILE_BYTES:
         return _fail("file_content exceeds 1 MiB.")
     directory = _ensure_dir(store, skill)
-    target = directory / rel
+    target = _confined(directory, rel)
+    if target is None:
+        return _fail(f"file_path {rel.as_posix()!r} escapes skill {skill.name!r}.")
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(file_content, encoding="utf-8")
     return {
@@ -353,7 +370,9 @@ def _remove_support(store: SkillStore, skill: Skill, file_path: object) -> dict:
     directory = _usable_dir(skill)
     if directory is None:
         return _fail(f"Skill {skill.name!r} has no mirrored directory.")
-    target = directory / rel
+    target = _confined(directory, rel)
+    if target is None:
+        return _fail(f"file_path {rel.as_posix()!r} escapes skill {skill.name!r}.")
     if not target.is_file():
         return _fail(f"File {rel.as_posix()!r} was not found in skill {skill.name!r}.")
     target.unlink()

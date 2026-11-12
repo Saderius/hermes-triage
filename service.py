@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import threading
 from dataclasses import dataclass
+from pathlib import Path
 
 from .catalog_io import HOOK_CONTEXT_SAFE_CHARS, activation_text
 from .catalog_link import invoked_skills, leading_tokens, parse_folders
@@ -660,9 +661,25 @@ class Runtime:
         from .catalog_io import apply_skill_manage
 
         parsed = _args(args)
-        if not any(self.store.get(name) is not None for name in _manage_names(parsed)):
+        skills = [self.store.get(name) for name in _manage_names(parsed)]
+        if not any(skill is not None for skill in skills):
+            return None
+        # Hermes' own skills are Hermes' to edit: its skill_manage runs, with its
+        # guard scan (skills.guard_agent_created) when the user turned that on.
+        roots = _hermes_skill_roots()
+        if any(skill is not None and _under_any(skill.source, roots) for skill in skills):
             return None
         action = str(parsed.get("action") or "").strip().lower()
+        if _guard_agent_created() and _writes(parsed):
+            return json.dumps({
+                "success": False,
+                "error": (
+                    "triage: skills.guard_agent_created is on, so model edits to skills are scanned by Hermes. "
+                    "Triage does not edit catalog skills while that is on; use Hermes' own skill_manage on a skill "
+                    "in Hermes' skills folder, or ask the user to make the change."
+                ),
+                "served_by": "triage",
+            })
         operations = parsed.get("operations") if isinstance(parsed.get("operations"), list) else None
         if operations is None and action not in {"create", ""} and not self._manage_names_approved(parsed, session_id):
             return json.dumps({
@@ -1016,6 +1033,64 @@ def render_always_load(
     if missing:
         lines.append("Not in the catalog (skipped): " + ", ".join(missing) + ".")
     return "\n".join(lines) + ("\n\n" + "\n\n".join(inline) if inline else "")
+
+
+_WRITE_ACTIONS = frozenset({"create", "patch", "edit", "write_file"})
+
+
+def _writes(args: dict) -> bool:
+    """True when a skill_manage call (or any operation of a batch) creates or edits a skill."""
+    ops = args.get("operations") if isinstance(args.get("operations"), list) else [args]
+    return any(isinstance(op, dict) and str(op.get("action") or "").strip().lower() in _WRITE_ACTIONS for op in ops)
+
+
+def _hermes_config() -> dict:
+    try:
+        from hermes_cli.config import load_config_readonly
+
+        cfg = load_config_readonly()
+    except Exception:
+        return {}
+    return cfg if isinstance(cfg, dict) else {}
+
+
+def _guard_agent_created() -> bool:
+    """Hermes' opt-in scan of skills the agent writes (``skills.guard_agent_created``)."""
+    value = (_hermes_config().get("skills") or {}).get("guard_agent_created")
+    if isinstance(value, bool):
+        return value
+    return str(value or "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _hermes_skill_roots() -> list[Path]:
+    """Hermes' own skill folders: ``<hermes home>/skills`` and ``skills.external_dirs``."""
+    from .paths import default_skills_dir
+
+    roots = [default_skills_dir()]
+    extra = (_hermes_config().get("skills") or {}).get("external_dirs") or []
+    if isinstance(extra, str):
+        extra = [part for part in extra.replace(";", ",").split(",")]
+    for item in extra if isinstance(extra, list) else []:
+        text = str(item or "").strip()
+        if text:
+            roots.append(Path(text).expanduser())
+    return roots
+
+
+def _under_any(path: str, roots: list[Path]) -> bool:
+    if not path:
+        return False
+    try:
+        target = Path(path).resolve()
+    except (OSError, ValueError):
+        return False
+    for root in roots:
+        try:
+            target.relative_to(root.resolve())
+            return True
+        except (OSError, ValueError):
+            continue
+    return False
 
 
 def _manage_names(args: dict) -> list[str]:
